@@ -45,8 +45,8 @@ async function checktradepriceonAVAX(amount,token) { //amount and token in STRIN
     const WAVAXUSDCPair = await Fetcher.fetchPairData(WAVAX, USDC, providerAVAX);
     const WAVAXGMXPair = await Fetcher.fetchPairData(WAVAX, GMX, providerAVAX);
     var route;
-  
-    const amountIn = amount;
+
+    const amountIn = amount.toString();
     if (token == 'USDC') {
       token = USDC;
       route = new Route([WAVAXUSDCPair, WAVAXGMXPair], USDC);
@@ -67,16 +67,13 @@ async function checktradepriceonAVAX(amount,token) { //amount and token in STRIN
     if (token == USDC) {
       console.log(Number(amountOutMin));
       console.log(Number((amountOutMin).toString())/10**18);
-      console.log('For a USDC to GMX swap, USDC per GMX: ' + 1/Number(trade.executionPrice.toSignificant(6)));
       return ([amountOutMin,value]);
     } else {
       console.log(Number(amountOutMin));
       console.log(Number((amountOutMin).toString())/10**6);
-      console.log('For a GMX to USDC swap, USDC per GMX: ' + Number(trade.executionPrice.toSignificant(6)));
       return ([amountOutMin,value]);
     }
 }
-
 /*
 async function tradeonAVAX(amountOutMin, value, path) {
   const router = traderjoe_router.connect(wallet);
@@ -107,13 +104,44 @@ async function checktradepriceonARBI(amount,token) { //amount and token in STRIN
       amountIn.toString()
     )
     console.log(quotedAmountOut.toString());
+    return (quotedAmountOut);
 }
 
 async function checkWalletBalance() {
-    const USDC_Avax_balance = (await USDC_Avax_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toNumber();
-    const GMX_Avax_balance = (await GMX_Avax_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toNumber();
-    const USDC_Arbi_balance = (await USDC_Arbi_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toNumber();
-    const GMX_Arbi_balance = (await GMX_Arbi_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toNumber();   
-    console.log(USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance)
+    const USDC_Avax_balance = Number((await USDC_Avax_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());
+    const GMX_Avax_balance = Number((await GMX_Avax_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());
+    const USDC_Arbi_balance = Number((await USDC_Arbi_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());
+    const GMX_Arbi_balance = Number((await GMX_Arbi_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());   
+    
     return [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance]
 }   
+
+async function determineTrade() {
+    var SellAVAX_BuyArbi;
+    var SellArbi_BuyAvax;
+    const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
+    if (GMX_Avax_balance > 100) { //Sell GMX on AVAX and buy on Arbi
+        const [USDC_received,value] = await checktradepriceonAVAX(GMX_Avax_balance,'GMX');
+        console.log(USDC_received);
+        const GMX_received = await checktradepriceonARBI(USDC_received, 'USDC');
+        console.log(GMX_received.toString());
+        if (GMX_received > GMX_Avax_balance*1.01 && USDC_Arbi_balance > Number(USDC_received)) {
+            console.log('sell avax buy arbi');
+            SellAVAX_BuyArbi = true;
+            SellArbi_BuyAvax = false
+            return [SellAVAX_BuyArbi, SellArbi_BuyAvax];
+        }
+    } else if (GMX_Arbi_balance > 100) {
+        const USDC_received = await checktradepriceonARBI(GMX_Arbi_balance,'GMX');
+        console.log(USDC_received);
+        const [GMX_received,value] = await checktradepriceonAVAX(USDC_received, 'USDC');
+        console.log(GMX_received);
+        if (Number(GMX_received) > GMX_Arbi_balance*1.01 && USDC_Avax_balance > Number(USDC_received)) {
+            console.log('sell arbi buy avax');
+            SellArbi_BuyAvax = true;
+            SellAVAX_BuyArbi = false
+            return [SellAVAX_BuyArbi, SellArbi_BuyAvax];
+        }
+    } 
+}
+determineTrade();
