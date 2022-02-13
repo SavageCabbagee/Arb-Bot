@@ -79,12 +79,12 @@ async function checktradepriceonAVAX(amount,token) { //amount and token in STRIN
     }
 }
 
-async function tradeonAVAX(amountOutMin, value, path) {
+async function tradeonAVAX(amountIn, amountOutMin, path) {
   const router = traderjoe_router.connect(wallet);
   const to = "0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5"; // should be a checksummed recipient address
   const deadline = Math.floor(Date.now() / 1000) + 60 * 3; // 3 minutes from the current Unix time
   const txn = await router.swapExactTokensForTokens(
-    value,
+    amountIn,
     amountOutMin,
     path,
     to,
@@ -98,9 +98,8 @@ async function checktradepriceonARBI(amount,token) { //amount and token in STRIN
     var amountIn = amount;
     if (token == 'USDC') {
       path = '0xff970a61a04b1ca14834a43f5de4533ebddb5cc80001f482af49447d8a07e3bd95bd0d56f35241523fbab1000bb8fc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a';
-       } else {
+    } else {
       path = '0xfc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a000bb882af49447d8a07e3bd95bd0d56f35241523fbab10001f4ff970a61a04b1ca14834a43f5de4533ebddb5cc8';
-  
     }
     const quotedAmountOut = await quoterContract.callStatic.quoteExactInput(
       path,
@@ -110,16 +109,22 @@ async function checktradepriceonARBI(amount,token) { //amount and token in STRIN
     return (quotedAmountOut);
 }
 
-async function tradeonArbi(amountOutMin, value, path) {
-    const router = traderjoe_router.connect(wallet);
-    const to = "0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5"; // should be a checksummed recipient address
-    const deadline = Math.floor(Date.now() / 1000) + 60 * 3; // 3 minutes from the current Unix time
-    const txn = await router.swapExactTokensForTokens(
-      value,
-      amountOutMin,
-      path,
-      to,
-      deadline
+async function tradeonArbi(token, amountin, amountout) {
+    const unirouter = uniswap_router.connect(wallet);
+    var paths;
+    if (token = 'USDC') {
+      paths = '0xff970a61a04b1ca14834a43f5de4533ebddb5cc80001f482af49447d8a07e3bd95bd0d56f35241523fbab1000bb8fc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a';
+    } else {
+      paths = '0xfc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a000bb882af49447d8a07e3bd95bd0d56f35241523fbab10001f4ff970a61a04b1ca14834a43f5de4533ebddb5cc8';
+    }
+    const txn = await unirouter.exactInputSingle(
+      {
+       path: paths,
+       recipient: "0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5",
+       deadline: Math.floor(Date.now() / 1000) + 60 * 3 ,
+       amountIn: amountin,
+       amountOutMinimum: amountout
+      }
     )
     await txn.wait();
   }
@@ -144,10 +149,8 @@ async function determineTrade() {
         console.log(GMX_received.toString());
         if (GMX_received > GMX_Avax_balance*1.01 && USDC_Arbi_balance > Number(USDC_received)) {
             console.log('sell avax buy arbi');
-            SellAVAX_BuyArbi = true;
-            SellArbi_BuyAvax = false
-            return [SellAVAX_BuyArbi, SellArbi_BuyAvax];
-            //calls tradeonAVAX
+            await tradeonAVAX(GMX_Avax_balance, Number(USDC_received.toString()) * 0.99, ['0x62edc0692BD897D2295872a9FFCac5425011c661','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664']);
+            await tradeonArbi('USDC', USDC_Arbi_balance, GMX_received * 0.99);
         }
     } else if (GMX_Arbi_balance > 100) {
         const USDC_received = await checktradepriceonARBI(GMX_Arbi_balance,'GMX');
@@ -156,9 +159,9 @@ async function determineTrade() {
         console.log(GMX_received);
         if (Number(GMX_received) > GMX_Arbi_balance*1.01 && USDC_Avax_balance > Number(USDC_received)) {
             console.log('sell arbi buy avax');
-            SellArbi_BuyAvax = true;
-            SellAVAX_BuyArbi = false
-            return [SellAVAX_BuyArbi, SellArbi_BuyAvax];
+            await tradeonAVAX(USDC_Avax_balance, Number(GMX_received.toString()) * 0.99, ['0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0x62edc0692BD897D2295872a9FFCac5425011c661']);
+            await tradeonArbi('GMX', GMX_Arbi_balance, USDC_received * 0.99);
+            
         }
     } 
 }
