@@ -2,11 +2,13 @@ import {Token as JOEToken, Fetcher, Trade, Route, TokenAmount, TradeType, Percen
 import { Contract, ethers } from "ethers";
 import { Token as UniToken, CurrencyAmount, Percent as UniPercent } from '@uniswap/sdk-core';
 import { abi as QuoterABI } from "@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json";
+require('dotenv').config();
 
-//const wallet = new ethers.Wallet('');
+const privkey = String(process.env.Wallet);
+const wallet = new ethers.Wallet(privkey);
 
 const providerAVAX = new ethers.providers.JsonRpcProvider("https://api.avax.network/ext/bc/C/rpc"); 
-const providerARB = new ethers.providers.JsonRpcProvider("https://rpc.ankr.com/arbitrum");
+const providerARB = new ethers.providers.JsonRpcProvider("https://arb1.arbitrum.io/rpc");
 
 const WAVAX = new JOEToken(43114, '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7', 18, "WAVAX", "Wrapped AVAX");
 const USDC = new JOEToken(43114, '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664', 6, "USDC", "USDC");
@@ -71,8 +73,9 @@ async function checktradepriceonAVAX(amount,token) {
 }
 
 async function tradeonAVAX(amountIn, amountOutMin, path) {
-  const router = traderjoe_router.connect(wallet);
-  const to = "0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5"; // should be a checksummed recipient address
+  const walletAvax = wallet.connect(providerAVAX);
+  const router = traderjoe_router.connect(walletAvax);
+  const to = "0xb4a938744C396612f2B34e9D6c354C4C0cCa259d"; // should be a checksummed recipient address
   const deadline = Math.floor(Date.now() / 1000) + 60 * 3; // 3 minutes from the current Unix time
   const txn = await router.swapExactTokensForTokens(
     amountIn,
@@ -100,56 +103,118 @@ async function checktradepriceonARBI(amount,token) { //amount and token in STRIN
     return (quotedAmountOut);
 }
 
-async function tradeonArbi(token, amountin, amountout) {
-    const unirouter = uniswap_router.connect(wallet);
+async function tradeonArbi(amountin, amountout, token) {
+    const walletArbi = wallet.connect(providerARB);
+    const unirouter = uniswap_router.connect(walletArbi);
     var paths;
-    if (token = 'USDC') {
+    if (token == 'USDC') {
       paths = '0xff970a61a04b1ca14834a43f5de4533ebddb5cc80001f482af49447d8a07e3bd95bd0d56f35241523fbab1000bb8fc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a';
     } else {
       paths = '0xfc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a000bb882af49447d8a07e3bd95bd0d56f35241523fbab10001f4ff970a61a04b1ca14834a43f5de4533ebddb5cc8';
     }
-    const txn = await unirouter.exactInputSingle(
-      {
-       path: paths,
-       recipient: "0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5",
-       deadline: Math.floor(Date.now() / 1000) + 60 * 3 ,
-       amountIn: amountin,
-       amountOutMinimum: amountout
-      }
-    )
+    var params = {
+      path: paths,
+      recipient: "0xb4a938744C396612f2B34e9D6c354C4C0cCa259d",
+      deadline: Math.floor(Date.now() / 1000) + 60 * 3 ,
+      amountIn: amountin,
+      amountOutMinimum: amountout
+     };
+    const txn = await unirouter.exactInput(params);
     await txn.wait();
   }
 
 async function checkWalletBalance() {
-    const USDC_Avax_balance = Number((await USDC_Avax_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());
-    const GMX_Avax_balance = Number((await GMX_Avax_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());
-    const USDC_Arbi_balance = Number((await USDC_Arbi_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());
-    const GMX_Arbi_balance = Number((await GMX_Arbi_contract.balanceOf('0xE7E3d237FbF3B034253b17CfC23384a90Af47Ef5')).toString());   
+    const USDC_Avax_balance = (await USDC_Avax_contract.balanceOf('0xb4a938744C396612f2B34e9D6c354C4C0cCa259d'));
+    const GMX_Avax_balance = (await GMX_Avax_contract.balanceOf('0xb4a938744C396612f2B34e9D6c354C4C0cCa259d'));
+    const USDC_Arbi_balance = (await USDC_Arbi_contract.balanceOf('0xb4a938744C396612f2B34e9D6c354C4C0cCa259d'));
+    const GMX_Arbi_balance = (await GMX_Arbi_contract.balanceOf('0xb4a938744C396612f2B34e9D6c354C4C0cCa259d'));   
     
     return [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance]
 }   
 
 async function determineTrade() {
     const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
-    if (GMX_Avax_balance > 100) { //Sell GMX on AVAX and buy on Arbi
-        const [USDC_received,value] = await checktradepriceonAVAX(GMX_Avax_balance,'GMX');
-        console.log(USDC_received);
-        const GMX_received = await checktradepriceonARBI(USDC_received, 'USDC');
-        console.log(GMX_received.toString());
-        if (GMX_received > GMX_Avax_balance*1.01 && USDC_Arbi_balance > Number(USDC_received)) {
-            console.log('sell avax buy arbi');
-            await tradeonAVAX(GMX_Avax_balance, Number(USDC_received.toString()) * 0.99, ['0x62edc0692BD897D2295872a9FFCac5425011c661','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664']);
-            await tradeonArbi('USDC', USDC_Arbi_balance, GMX_received * 0.99);
-        }
-    } else if (GMX_Arbi_balance > 100) {
-        const USDC_received = await checktradepriceonARBI(GMX_Arbi_balance,'GMX');
-        console.log(USDC_received);
-        const [GMX_received,value] = await checktradepriceonAVAX(USDC_received, 'USDC');
-        console.log(GMX_received);
-        if (Number(GMX_received) > GMX_Arbi_balance*1.01 && USDC_Avax_balance > Number(USDC_received)) {
-            console.log('sell arbi buy avax');
-            await tradeonAVAX(USDC_Avax_balance, Number(GMX_received.toString()) * 0.99, ['0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0x62edc0692BD897D2295872a9FFCac5425011c661']);
-            await tradeonArbi('GMX', GMX_Arbi_balance, USDC_received * 0.99);   
-        }
+    if (GMX_Avax_balance > 100) {
+      const [USDC_received,value] = await checktradepriceonAVAX(GMX_Avax_balance,'GMX');
+      console.log(USDC_received);
+      const GMX_received = await checktradepriceonARBI(USDC_received, 'USDC');
+      console.log(GMX_received.toString());
+      console.log(GMX_received > GMX_Avax_balance*1.01);
+      if (GMX_received > GMX_Avax_balance*1.01 && USDC_Arbi_balance > Number(USDC_received)) {
+          console.log('sell avax buy arbi');
+          await tradeonAVAX(String(GMX_Avax_balance), String(USDC_received), ['0x62edc0692BD897D2295872a9FFCac5425011c661','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664']);
+          await tradeonArbi(String(USDC_received), String(GMX_received), 'USDC');
+      }
+  } else if (GMX_Arbi_balance > 100) {
+      const USDC_received = await checktradepriceonARBI(GMX_Arbi_balance,'GMX');
+      console.log(USDC_received);
+      const [GMX_received,value] = await checktradepriceonAVAX(USDC_received, 'USDC');
+      console.log(GMX_received);
+      console.log(Number(GMX_received));
+      console.log(Number(GMX_received) > GMX_Arbi_balance*1.01);
+      if (Number(GMX_received) > GMX_Arbi_balance*1.01 && USDC_Avax_balance > Number(USDC_received)) {
+          console.log('sell arbi buy avax');
+          await tradeonAVAX(String(USDC_received), String(GMX_received), ['0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0x62edc0692BD897D2295872a9FFCac5425011c661']);
+          await tradeonArbi(String(GMX_Arbi_balance), String(USDC_received), 'GMX');   
+      }
     } 
+}
+
+async function testTrade() {
+    const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
+    const [GMX_received,value] = await checktradepriceonAVAX(USDC_Avax_balance, 'USDC');
+    console.log(GMX_received);
+    await tradeonAVAX(USDC_Avax_balance, String(GMX_received), ['0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0x62edc0692BD897D2295872a9FFCac5425011c661']);  
+}
+
+async function testTrade2() {
+  const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
+  const [USDC_received,value] = await checktradepriceonAVAX(GMX_Avax_balance, 'GMX');
+  console.log(USDC_received);
+  console.log(typeof GMX_Avax_balance);
+  await tradeonAVAX(String(GMX_Avax_balance), String(USDC_received), ['0x62edc0692BD897D2295872a9FFCac5425011c661','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664']);
+}
+
+async function testTrade3() {
+  const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
+  const USDC_received = await checktradepriceonARBI(GMX_Arbi_balance, 'GMX');
+  console.log(String(USDC_received));
+  console.log(String(GMX_Arbi_balance));
+  await tradeonArbi(String(GMX_Arbi_balance), String(USDC_received), 'GMX');
+}
+
+async function testTrade4() {
+  const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
+  const GMX_received = await checktradepriceonARBI(USDC_Arbi_balance * 0.75, 'GMX');
+  console.log(String(GMX_received));
+  console.log(String(USDC_Arbi_balance));
+  await tradeonArbi(String(USDC_Arbi_balance * 0.75), String(GMX_received), 'USDC');
+}
+
+async function testTrade5() {
+  const [USDC_Avax_balance, GMX_Avax_balance, USDC_Arbi_balance, GMX_Arbi_balance] = await checkWalletBalance();
+  if (GMX_Avax_balance > 100) {
+    const [USDC_received,value] = await checktradepriceonAVAX(GMX_Avax_balance,'GMX');
+    console.log(USDC_received);
+    const GMX_received = await checktradepriceonARBI(USDC_received, 'USDC');
+    console.log(GMX_received.toString());
+    console.log(GMX_received > GMX_Avax_balance*1.01);
+    if (USDC_Arbi_balance > Number(USDC_received)) {
+        console.log('sell avax buy arbi');
+        await tradeonAVAX(String(GMX_Avax_balance), String(USDC_received), ['0x62edc0692BD897D2295872a9FFCac5425011c661','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664']);
+        await tradeonArbi(String(USDC_received), String(GMX_received), 'USDC');
+    }
+} else if (GMX_Arbi_balance > 100) {
+    const USDC_received = await checktradepriceonARBI(GMX_Arbi_balance,'GMX');
+    console.log(USDC_received);
+    const [GMX_received,value] = await checktradepriceonAVAX(USDC_received, 'USDC');
+    console.log(GMX_received);
+    console.log(Number(GMX_received));
+    console.log(Number(GMX_received) > GMX_Arbi_balance*1.01);
+    if (USDC_Avax_balance > Number(USDC_received)) {
+        console.log('sell arbi buy avax');
+        await tradeonAVAX(String(USDC_received), String(GMX_received), ['0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664','0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7','0x62edc0692BD897D2295872a9FFCac5425011c661']);
+        await tradeonArbi(String(GMX_Arbi_balance), String(USDC_received), 'GMX');   
+    }
+  } 
 }
