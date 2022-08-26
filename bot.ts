@@ -218,3 +218,6 @@ async function testTrade5() {
     }
   } 
 }
+
+
+determineTrade();
